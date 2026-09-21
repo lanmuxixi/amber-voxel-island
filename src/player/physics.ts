@@ -1,5 +1,6 @@
 import { GAME_CONFIG } from '../game/config';
 
+import { BlockId } from '../world/blocks';
 import type { Vec3i } from '../world/coords';
 import type { WorldReader } from '../world/World';
 
@@ -23,14 +24,16 @@ export interface PlayerInput {
   jump: boolean;
 }
 
-function getPlayerBounds(position: Vec3): {
+export interface PlayerBlockBounds {
   minX: number;
   maxX: number;
   minY: number;
   maxY: number;
   minZ: number;
   maxZ: number;
-} {
+}
+
+export function getPlayerBlockBounds(position: Vec3): PlayerBlockBounds {
   return {
     minX: Math.floor(position.x - GAME_CONFIG.playerRadius),
     maxX: Math.floor(position.x + GAME_CONFIG.playerRadius),
@@ -45,18 +48,24 @@ export function hasSafePlayerCollisionBounds(position: Vec3): boolean {
   if (![position.x, position.y, position.z].every(Number.isFinite)) {
     return false;
   }
-  return Object.values(getPlayerBounds(position)).every(Number.isSafeInteger);
+  return Object.values(getPlayerBlockBounds(position)).every(Number.isSafeInteger);
 }
 
-function overlapsWorld(world: WorldReader, position: Vec3): boolean {
-  const bounds = getPlayerBounds(position);
+export function playerOverlapsWorld(world: WorldReader, position: Vec3): boolean {
+  const bounds = getPlayerBlockBounds(position);
+  const state: PlayerState = {
+    position,
+    velocity: { x: 0, y: 0, z: 0 },
+    yaw: 0,
+    pitch: 0,
+    grounded: false,
+  };
   for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
     for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
       for (let z = bounds.minZ; z <= bounds.maxZ; z += 1) {
-        if (world.getBlock({ x, y, z }) !== 0) {
-          if (playerOverlapsBlock({ position, velocity: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, grounded: false }, { x, y, z })) {
-            return true;
-          }
+        const block = { x, y, z };
+        if (world.getBlock(block) !== BlockId.Air && playerOverlapsBlock(state, block)) {
+          return true;
         }
       }
     }
@@ -76,7 +85,7 @@ function moveAxis(
 
   for (let index = 0; index < totalSteps; index += 1) {
     state.position[axis] += step;
-    if (!overlapsWorld(world, state.position)) {
+    if (!playerOverlapsWorld(world, state.position)) {
       continue;
     }
     state.position[axis] -= step;

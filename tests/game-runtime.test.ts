@@ -160,7 +160,7 @@ vi.mock('../src/world/ChunkRenderer', () => ({
 
 vi.mock('../src/world/terrain', () => ({
   generateIsland: () => ({
-    blocks: new Map(),
+    blocks: new Map([['0,5,-1', 1]]),
     spawn: { x: 0.5, y: 6.25, z: -0.5 },
   }),
 }));
@@ -283,6 +283,61 @@ describe('Game runtime boundaries', () => {
     const unsafeGame = createGame();
     expect(spies.playerState?.position).toEqual({ x: 0.5, y: 6.25, z: -0.5 });
     unsafeGame.dispose();
+  });
+
+  it('resolves a safe fallback after saved edits obstruct the generated spawn', () => {
+    const storage = createStorage(JSON.stringify({
+      version: 1,
+      seed: 777,
+      player: { x: 0.5, y: 6.25, z: -0.5, yaw: 0, pitch: 0 },
+      selectedSlot: 0,
+      changes: [
+        [0, 6, -1, 3],
+        [0, 7, -1, 3],
+      ],
+    }));
+    installBrowser(() => storage);
+
+    createGame();
+
+    expect(spies.playerState?.position.x).toBe(0.5);
+    expect(spies.playerState?.position.z).toBe(-0.5);
+    expect(spies.playerState?.position.y).toBeGreaterThan(8);
+  });
+
+  it('uses the current edited world when respawning after a void fall', () => {
+    const storage = createStorage(JSON.stringify({
+      version: 1,
+      seed: 777,
+      player: { x: 2.5, y: 8, z: 2.5, yaw: 0, pitch: 0 },
+      selectedSlot: 0,
+      changes: [
+        [0, 6, -1, 3],
+        [0, 7, -1, 3],
+      ],
+    }));
+    const { requestFrame } = installBrowser(() => storage);
+    const game = createGame();
+    spies.playerState!.position.y = -11;
+    spies.playerLocked = true;
+    game.start();
+
+    const frame = requestFrame.mock.calls[0]?.[0] as FrameRequestCallback;
+    frame(performance.now() + 16);
+
+    expect(spies.playerState?.position.x).toBe(0.5);
+    expect(spies.playerState?.position.z).toBe(-0.5);
+    expect(spies.playerState?.position.y).toBeGreaterThan(8);
+  });
+
+  it('exposes only read-only snapshots through the browser test contract', () => {
+    const storage = createStorage();
+    installBrowser(() => storage);
+    vi.stubGlobal('location', { search: '?e2e=1' });
+
+    createGame();
+
+    expect(Object.keys(window.__VOXEL_TEST__ ?? {})).toEqual(['snapshot']);
   });
 
   it('starts only one animation loop', () => {

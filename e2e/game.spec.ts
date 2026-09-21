@@ -51,6 +51,30 @@ async function enterWorld(page: import('@playwright/test').Page): Promise<void> 
   await expect.poll(() => page.evaluate(() => window.__VOXEL_TEST__?.snapshot().locked)).toBe(true);
 }
 
+interface BrowserSave {
+  version: 1;
+  seed: number;
+  player: { x: number; y: number; z: number; yaw: number; pitch: number };
+  selectedSlot: number;
+  changes: [number, number, number, number][];
+}
+
+async function preloadSave(page: import('@playwright/test').Page, save: BrowserSave): Promise<void> {
+  await page.addInitScript((value) => {
+    if (sessionStorage.getItem('amber-voxel-island:e2e-preloaded') !== null) {
+      return;
+    }
+    localStorage.setItem('amber-voxel-island:v1', JSON.stringify(value));
+    sessionStorage.setItem('amber-voxel-island:e2e-preloaded', '1');
+  }, save);
+}
+
+async function replaceSaveOnNextLoad(page: import('@playwright/test').Page, save: BrowserSave): Promise<void> {
+  await page.addInitScript((value) => {
+    localStorage.setItem('amber-voxel-island:v1', JSON.stringify(value));
+  }, save);
+}
+
 test('persists edits across reload and resets without changing the seed', async ({ page }) => {
   await page.goto('/?e2e=1');
   await expect(page.getByText('点击进入琥珀群岛')).toBeVisible();
@@ -121,18 +145,21 @@ test('keeps the hotbar and pause menu inside a 1024x768 viewport', async ({ page
 });
 
 test('jumps and collides with a deterministic wall', async ({ page }) => {
-  await page.goto('/?e2e=1');
-  await page.evaluate(() => {
-    const api = window.__VOXEL_TEST__!;
-    for (let x = 9; x <= 11; x += 1) {
-      for (let z = 9; z <= 11; z += 1) {
-        api.editBlock({ x, y: 20, z }, 3);
-      }
+  const changes: BrowserSave['changes'] = [];
+  for (let x = 9; x <= 11; x += 1) {
+    for (let z = 9; z <= 11; z += 1) {
+      changes.push([x, 25, z, 3]);
     }
-    api.editBlock({ x: 10, y: 21, z: 9 }, 3);
-    api.editBlock({ x: 10, y: 22, z: 9 }, 3);
-    api.teleport({ x: 10.5, y: 21.01, z: 10.5 }, 0);
+  }
+  changes.push([10, 26, 9, 3], [10, 27, 9, 3]);
+  await preloadSave(page, {
+    version: 1,
+    seed: 1_945_533_262,
+    player: { x: 10.5, y: 26.01, z: 10.5, yaw: 0, pitch: 0 },
+    selectedSlot: 0,
+    changes,
   });
+  await page.goto('/?e2e=1');
   await enterWorld(page);
   await page.waitForTimeout(150);
 
@@ -166,20 +193,30 @@ test('flushes the latest player coordinates before an immediate reload', async (
 });
 
 test('rejects edits beyond the finite edge and restores an in-bounds edge edit', async ({ page }) => {
+  const edgeSave: BrowserSave = {
+    version: 1,
+    seed: 1_945_533_262,
+    player: { x: 26.5, y: 24.01, z: 0.5, yaw: -Math.PI / 2, pitch: 0 },
+    selectedSlot: 0,
+    changes: [
+      [26, 23, 0, 3],
+      [31, 25, 0, 3],
+    ],
+  };
+  await preloadSave(page, edgeSave);
   await page.goto('/?e2e=1');
-  const results = await page.evaluate(() => {
-    const api = window.__VOXEL_TEST__!;
-    return {
-      left: api.editBlock({ x: -33, y: 20, z: 0 }, 3),
-      right: api.editBlock({ x: 32, y: 20, z: 0 }, 3),
-      far: api.editBlock({ x: 0, y: 20, z: 32 }, 3),
-      edge: api.editBlock({ x: 31, y: 20, z: 31 }, 3),
-    };
-  });
-
-  expect(results).toEqual({ left: false, right: false, far: false, edge: true });
-  await page.evaluate(() => window.__VOXEL_TEST__!.flushSave());
+  await enterWorld(page);
+  await expect.poll(() => page.evaluate(() => window.__VOXEL_TEST__!.snapshot().target)).toEqual({ x: 31, y: 25, z: 0 });
   await page.reload();
-  expect(await page.evaluate(() => window.__VOXEL_TEST__!.getBlock({ x: 31, y: 20, z: 31 }))).toBe(3);
-  expect(await page.evaluate(() => window.__VOXEL_TEST__!.getBlock({ x: 32, y: 20, z: 0 }))).toBe(0);
+  await expect.poll(() => page.evaluate(() => window.__VOXEL_TEST__!.snapshot().deltaLength)).toBe(2);
+  await enterWorld(page);
+  await expect.poll(() => page.evaluate(() => window.__VOXEL_TEST__!.snapshot().target)).toEqual({ x: 31, y: 25, z: 0 });
+
+  await replaceSaveOnNextLoad(page, {
+    ...edgeSave,
+    changes: [[32, 25, 0, 3]],
+  });
+  await page.reload();
+  await expect(page.getByText('旧存档无法读取，已创建新岛屿。')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__VOXEL_TEST__!.snapshot().deltaLength)).toBe(0);
 });

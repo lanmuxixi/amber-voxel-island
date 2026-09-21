@@ -4,7 +4,14 @@ import * as THREE from 'three';
 import { BlockInteraction } from '../interaction/BlockInteraction';
 import { Inventory } from '../inventory/Inventory';
 import { PlayerController } from '../player/PlayerController';
-import { hasSafePlayerCollisionBounds, playerOverlapsBlock, type PlayerState } from '../player/physics';
+import {
+  hasSafePlayerCollisionBounds,
+  playerOverlapsBlock,
+  playerOverlapsWorld,
+  type PlayerState,
+  type Vec3,
+} from '../player/physics';
+import { resolveSafeSpawn } from '../player/spawn';
 import { resolveStorage, SaveStore, type SaveDataV1 } from '../persistence/SaveStore';
 import { Hud } from '../ui/Hud';
 import { BLOCKS, BlockId } from '../world/blocks';
@@ -24,10 +31,6 @@ declare global {
         paused: boolean;
         target: { x: number; y: number; z: number } | null;
       };
-      editBlock(position: { x: number; y: number; z: number }, block: BlockId): boolean;
-      getBlock(position: { x: number; y: number; z: number }): BlockId;
-      teleport(position: { x: number; y: number; z: number }, yaw?: number): void;
-      flushSave(): void;
     };
   }
 }
@@ -104,6 +107,8 @@ export class Game {
 
   private readonly seed: number;
 
+  private readonly generatedSpawn: Vec3;
+
   private frameHandle: number | null = null;
 
   private previousFrameTime = 0;
@@ -137,6 +142,7 @@ export class Game {
       : stored;
     this.seed = loadResult.data?.seed ?? crypto.getRandomValues(new Uint32Array(1))[0]!;
     const island = generateIsland(this.seed);
+    this.generatedSpawn = { ...island.spawn };
     this.world = new World(island.blocks);
     if (loadResult.data) {
       this.world.applyDelta(loadResult.data.changes);
@@ -236,29 +242,6 @@ export class Game {
             target: this.interaction.getTarget(),
           };
         },
-        editBlock: (position, block) => {
-          if (!this.world.setBlock(position, block)) {
-            return false;
-          }
-          this.chunks.markBlockDirty(position);
-          this.queueSave();
-          this.start();
-          return true;
-        },
-        getBlock: (position) => this.world.getBlock(position),
-        teleport: (position, yaw = 0) => {
-          const current = this.player.getState();
-          this.player.setState({
-            ...current,
-            position: { ...position },
-            velocity: { x: 0, y: 0, z: 0 },
-            yaw,
-            grounded: false,
-          });
-          this.queueSave();
-          this.start();
-        },
-        flushSave: () => this.flushSave(),
       };
     }
 
@@ -338,9 +321,8 @@ export class Game {
   };
 
   private spawnState(): PlayerState {
-    const island = generateIsland(this.seed);
     return {
-      position: { ...island.spawn },
+      position: resolveSafeSpawn(this.world, this.generatedSpawn),
       velocity: { x: 0, y: 0, z: 0 },
       yaw: 0,
       pitch: -0.35,
@@ -360,20 +342,8 @@ export class Game {
       return null;
     }
 
-    const minX = Math.floor(state.position.x - 0.32);
-    const maxX = Math.floor(state.position.x + 0.32);
-    const minY = Math.floor(state.position.y);
-    const maxY = Math.floor(state.position.y + 1.8 - 0.001);
-    const minZ = Math.floor(state.position.z - 0.32);
-    const maxZ = Math.floor(state.position.z + 0.32);
-    for (let x = minX; x <= maxX; x += 1) {
-      for (let y = minY; y <= maxY; y += 1) {
-        for (let z = minZ; z <= maxZ; z += 1) {
-          if (this.world.getBlock({ x, y, z }) !== BlockId.Air && playerOverlapsBlock(state, { x, y, z })) {
-            return null;
-          }
-        }
-      }
+    if (playerOverlapsWorld(this.world, state.position)) {
+      return null;
     }
     return state;
   }
