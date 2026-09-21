@@ -20,6 +20,22 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+function normalizeSave(snapshot: SaveDataV1): SaveDataV1 {
+  return {
+    version: snapshot.version,
+    seed: snapshot.seed,
+    player: {
+      x: snapshot.player.x,
+      y: snapshot.player.y,
+      z: snapshot.player.z,
+      yaw: snapshot.player.yaw,
+      pitch: snapshot.player.pitch,
+    },
+    selectedSlot: snapshot.selectedSlot,
+    changes: snapshot.changes.map(([x, y, z, block]) => [x, y, z, block]),
+  };
+}
+
 export function decodeSave(raw: string | null): SaveDataV1 | null {
   if (!raw) {
     return null;
@@ -104,7 +120,7 @@ export class SaveStore {
   }
 
   schedule(snapshot: SaveDataV1): void {
-    this.pending = structuredClone(snapshot);
+    this.pending = normalizeSave(snapshot);
     if (this.timer) {
       clearTimeout(this.timer);
     }
@@ -125,7 +141,6 @@ export class SaveStore {
     try {
       this.storage.setItem(this.key, JSON.stringify(this.pending));
       this.pending = null;
-      this.writeFailureReported = false;
       return true;
     } catch {
       if (!this.writeFailureReported) {

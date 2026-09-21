@@ -99,4 +99,57 @@ describe('SaveStore', () => {
     expect(store.flush()).toBe(false);
     expect(onWriteFailure).toHaveBeenCalledTimes(1);
   });
+
+  it('reports a write failure only once after an intervening successful write', () => {
+    const onWriteFailure = vi.fn();
+    const setItem = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error('quota');
+      })
+      .mockImplementationOnce(() => undefined)
+      .mockImplementationOnce(() => {
+        throw new Error('quota');
+      });
+    const store = new SaveStore(
+      {
+        getItem: () => null,
+        setItem,
+        removeItem: () => undefined,
+      },
+      'test-save',
+      100,
+      onWriteFailure,
+    );
+
+    store.schedule(validSave);
+    expect(store.flush()).toBe(false);
+    expect(store.flush()).toBe(true);
+    store.schedule({ ...validSave, seed: 43 });
+    expect(store.flush()).toBe(false);
+
+    expect(onWriteFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists only whitelisted save fields', () => {
+    const setItem = vi.fn();
+    const store = new SaveStore(
+      {
+        getItem: () => null,
+        setItem,
+        removeItem: () => undefined,
+      },
+      'test-save',
+    );
+    const snapshot = {
+      ...validSave,
+      debugLabel: 'omit me',
+      player: { ...validSave.player, grounded: true },
+    };
+
+    store.schedule(snapshot);
+    expect(store.flush()).toBe(true);
+
+    expect(setItem).toHaveBeenCalledWith('test-save', JSON.stringify(validSave));
+  });
 });
