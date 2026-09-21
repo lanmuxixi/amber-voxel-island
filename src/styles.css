@@ -186,6 +186,12 @@ body::before {
   position: absolute;
 }
 
+.onboarding[hidden],
+.pause-menu[hidden],
+.notice[hidden] {
+  display: none;
+}
+
 .onboarding,
 .pause-menu {
   top: 50%;
