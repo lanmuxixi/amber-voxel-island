@@ -108,12 +108,17 @@ body::before {
 .primary-button,
 .secondary-button,
 .reset-dialog button {
-  pointer-events: auto;
   border: 1px solid rgba(255, 227, 163, 0.28);
   border-radius: 16px;
   color: inherit;
   background: rgba(255, 244, 221, 0.08);
   font: inherit;
+}
+
+.onboarding,
+.pause-menu,
+.reset-dialog {
+  pointer-events: auto;
 }
 
 .hotbar-slot {
