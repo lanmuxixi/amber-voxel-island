@@ -1,0 +1,63 @@
+:root {
+  color: #fef3d1;
+  font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  background: linear-gradient(180deg, #20141c 0%, #5f2f64 38%, #e39b41 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+#game-canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+#hud-root {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  padding: 24px;
+}
+
+.boot-card {
+  min-width: min(420px, 100%);
+  padding: 24px 28px;
+  border: 1px solid rgba(255, 240, 216, 0.28);
+  border-radius: 20px;
+  background: rgba(30, 18, 28, 0.52);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  text-align: center;
+}
+
+.boot-card h1,
+.boot-card p {
+  margin: 0;
+}
+
+.boot-card h1 {
+  margin-bottom: 10px;
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  line-height: 1.05;
+}
+
+.boot-card p {
+  color: rgba(254, 243, 209, 0.82);
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+}
