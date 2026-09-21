@@ -74,7 +74,9 @@ describe('SaveStore', () => {
     vi.advanceTimersByTime(100);
 
     expect(setItem).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(setItem.mock.calls[0][1] as string)).toMatchObject({ seed: 43 });
+    const firstCall = setItem.mock.calls[0];
+    expect(firstCall).toBeDefined();
+    expect(JSON.parse(firstCall?.[1] as string)).toMatchObject({ seed: 43 });
   });
 
   it('reports a write failure only once across repeated flush attempts', () => {
