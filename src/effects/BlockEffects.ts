@@ -101,6 +101,7 @@ export class BlockEffects {
       24,
     );
     this.particleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.particleMesh.frustumCulled = false;
     this.scene.add(this.particleMesh);
     this.syncParticles();
   }
@@ -110,7 +111,7 @@ export class BlockEffects {
     for (let index = 0; index < 6; index += 1) {
       const entry = this.pool.acquire(0.45);
       const particle = this.particles[entry.index]!;
-      const angle = ((entry.index + index) / 6) * Math.PI * 2;
+      const angle = ((entry.index % 6) / 6) * Math.PI * 2;
       particle.position.copy(center);
       particle.velocity.set(Math.cos(angle) * 1.3, 1.5 + (entry.index % 3) * 0.18, Math.sin(angle) * 1.3);
       particle.color.set(BLOCKS[block].color);
@@ -126,7 +127,6 @@ export class BlockEffects {
     }
     if (!animation) {
       const mesh = new THREE.Mesh(this.placeGeometry, this.placeMaterial.clone());
-      this.scene.add(mesh);
       animation = { mesh, age: 0, duration: 0.12 };
       this.placeAnimations.push(animation);
     }
@@ -135,8 +135,13 @@ export class BlockEffects {
     animation.duration = 0.12;
     animation.mesh.visible = true;
     animation.mesh.position.set(position.x + 0.5, position.y + 0.5, position.z + 0.5);
-    (animation.mesh.material as THREE.MeshBasicMaterial).color.set(BLOCKS[block].color);
+    const material = animation.mesh.material as THREE.MeshBasicMaterial;
+    material.color.set(BLOCKS[block].color);
+    material.opacity = 0.45;
     animation.mesh.scale.setScalar(0.72);
+    if (animation.mesh.parent !== this.scene) {
+      this.scene.add(animation.mesh);
+    }
     this.playTone('triangle', 180, 120, 0.055, 0.03);
   }
 
@@ -160,13 +165,16 @@ export class BlockEffects {
     }
 
     for (const animation of this.placeAnimations) {
+      if (!animation.mesh.parent) {
+        continue;
+      }
       animation.age += dt;
       const progress = Math.min(animation.age / animation.duration, 1);
       const scale = 0.72 + (1 - 0.72) * progress;
       animation.mesh.scale.setScalar(scale);
       (animation.mesh.material as THREE.MeshBasicMaterial).opacity = 0.45 * (1 - progress * 0.4);
       if (progress >= 1) {
-        animation.mesh.visible = false;
+        animation.mesh.removeFromParent();
       }
     }
   }
@@ -179,13 +187,16 @@ export class BlockEffects {
     }
     for (const animation of this.placeAnimations) {
       animation.mesh.removeFromParent();
-      animation.mesh.geometry.dispose();
       if (animation.mesh.material instanceof THREE.Material) {
         animation.mesh.material.dispose();
       }
     }
     this.placeGeometry.dispose();
     this.placeMaterial.dispose();
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      void this.audioContext.close();
+    }
+    this.audioContext = null;
   }
 
   private syncParticles(): void {

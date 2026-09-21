@@ -20,4 +20,13 @@ describe('HUD visibility and pointer events', () => {
       /\.hotbar-slot(?:\s*,|\s*\{)[^}]*pointer-events:\s*auto;/,
     );
   });
+
+  it('keeps the selected slot lift independent from its entrance animation', () => {
+    expect(styles).toMatch(
+      /@keyframes rise-in[\s\S]*?translate:\s*0 14px;[\s\S]*?translate:\s*0 0;/,
+    );
+    expect(styles).toMatch(
+      /\.hotbar-slot\.is-selected\s*\{[^}]*transform:\s*translateY\(-4px\);/,
+    );
+  });
 });
