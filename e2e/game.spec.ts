@@ -46,11 +46,15 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+async function enterWorld(page: import('@playwright/test').Page): Promise<void> {
+  await page.getByRole('button', { name: /点击进入琥珀群岛|继续/ }).click();
+  await expect.poll(() => page.evaluate(() => window.__VOXEL_TEST__?.snapshot().locked)).toBe(true);
+}
+
 test('persists edits across reload and resets without changing the seed', async ({ page }) => {
   await page.goto('/?e2e=1');
   await expect(page.getByText('点击进入琥珀群岛')).toBeVisible();
-  await page.getByText('点击进入琥珀群岛').click();
-  await expect.poll(() => page.evaluate(() => window.__VOXEL_TEST__?.snapshot().locked)).toBe(true);
+  await enterWorld(page);
 
   const before = await page.evaluate(() => window.__VOXEL_TEST__!.snapshot().player);
   await page.keyboard.down('KeyW');
@@ -69,8 +73,7 @@ test('persists edits across reload and resets without changing the seed', async 
   await page.reload();
   await expect.poll(() => page.evaluate(() => window.__VOXEL_TEST__!.snapshot().deltaLength)).toBe(saved.deltaLength);
 
-  await page.getByRole('button', { name: '继续' }).click();
-  await expect.poll(() => page.evaluate(() => window.__VOXEL_TEST__?.snapshot().locked)).toBe(true);
+  await enterWorld(page);
   await page.mouse.move(720, 650);
   await expect.poll(() => page.evaluate(() => window.__VOXEL_TEST__!.snapshot().target)).not.toBeNull();
   const beforePlaceDeltaLength = await page.evaluate(() => window.__VOXEL_TEST__!.snapshot().deltaLength);
@@ -90,10 +93,7 @@ test('persists edits across reload and resets without changing the seed', async 
 test('keeps the hotbar and pause menu inside a 1024x768 viewport', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: '点击进入琥珀群岛' }).click();
-  await page.keyboard.down('KeyW');
-  await page.waitForTimeout(150);
-  await page.keyboard.up('KeyW');
+  await enterWorld(page);
   await page.keyboard.press('Escape');
 
   const hotbar = page.locator('.hotbar');
@@ -115,4 +115,71 @@ test('keeps the hotbar and pause menu inside a 1024x768 viewport', async ({ page
   expect((pauseBox?.y ?? 0) >= 0).toBe(true);
   expect((pauseBox?.x ?? 0) + (pauseBox?.width ?? 0) <= (viewport?.width ?? 0)).toBe(true);
   expect((pauseBox?.y ?? 0) + (pauseBox?.height ?? 0) <= (viewport?.height ?? 0)).toBe(true);
+
+  await page.getByRole('button', { name: '操作说明' }).click();
+  await expect(page.locator('.controls-help')).toContainText('WASD 移动，Space 跳跃');
+});
+
+test('jumps and collides with a deterministic wall', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.evaluate(() => {
+    const api = window.__VOXEL_TEST__!;
+    for (let x = 9; x <= 11; x += 1) {
+      for (let z = 9; z <= 11; z += 1) {
+        api.editBlock({ x, y: 20, z }, 3);
+      }
+    }
+    api.editBlock({ x: 10, y: 21, z: 9 }, 3);
+    api.editBlock({ x: 10, y: 22, z: 9 }, 3);
+    api.teleport({ x: 10.5, y: 21.01, z: 10.5 }, 0);
+  });
+  await enterWorld(page);
+  await page.waitForTimeout(150);
+
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(500);
+  await page.keyboard.up('KeyW');
+  const atWall = await page.evaluate(() => window.__VOXEL_TEST__!.snapshot().player);
+  expect(atWall.z).toBeGreaterThan(10.3);
+  expect(atWall.z).toBeLessThan(10.5);
+
+  const beforeJumpY = atWall.y;
+  await page.keyboard.down('Space');
+  await expect.poll(() => page.evaluate(() => window.__VOXEL_TEST__!.snapshot().player.y)).toBeGreaterThan(beforeJumpY + 0.2);
+  await page.keyboard.up('Space');
+});
+
+test('flushes the latest player coordinates before an immediate reload', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await enterWorld(page);
+  await page.keyboard.down('KeyD');
+  await page.waitForTimeout(140);
+  await page.keyboard.up('KeyD');
+  const beforeReload = await page.evaluate(() => window.__VOXEL_TEST__!.snapshot().player);
+
+  await page.reload();
+
+  const restored = await page.evaluate(() => window.__VOXEL_TEST__!.snapshot().player);
+  expect(restored.x).toBeCloseTo(beforeReload.x, 3);
+  expect(restored.y).toBeCloseTo(beforeReload.y, 3);
+  expect(restored.z).toBeCloseTo(beforeReload.z, 3);
+});
+
+test('rejects edits beyond the finite edge and restores an in-bounds edge edit', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  const results = await page.evaluate(() => {
+    const api = window.__VOXEL_TEST__!;
+    return {
+      left: api.editBlock({ x: -33, y: 20, z: 0 }, 3),
+      right: api.editBlock({ x: 32, y: 20, z: 0 }, 3),
+      far: api.editBlock({ x: 0, y: 20, z: 32 }, 3),
+      edge: api.editBlock({ x: 31, y: 20, z: 31 }, 3),
+    };
+  });
+
+  expect(results).toEqual({ left: false, right: false, far: false, edge: true });
+  await page.evaluate(() => window.__VOXEL_TEST__!.flushSave());
+  await page.reload();
+  expect(await page.evaluate(() => window.__VOXEL_TEST__!.getBlock({ x: 31, y: 20, z: 31 }))).toBe(3);
+  expect(await page.evaluate(() => window.__VOXEL_TEST__!.getBlock({ x: 32, y: 20, z: 0 }))).toBe(0);
 });

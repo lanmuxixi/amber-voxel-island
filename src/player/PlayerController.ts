@@ -20,6 +20,16 @@ export class PlayerController {
     this.keys.delete(event.code);
   };
 
+  private readonly clearInput = (): void => {
+    this.keys.clear();
+  };
+
+  private readonly onPointerLockChange = (): void => {
+    if (!this.isLocked()) {
+      this.clearInput();
+    }
+  };
+
   private readonly onMouseMove = (event: MouseEvent): void => {
     if (!this.isLocked()) {
       return;
@@ -47,7 +57,9 @@ export class PlayerController {
     this.applyCamera();
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('blur', this.clearInput);
     document.addEventListener('mousemove', this.onMouseMove);
+    document.addEventListener('pointerlockchange', this.onPointerLockChange);
   }
 
   update(deltaSeconds: number): void {
@@ -96,7 +108,9 @@ export class PlayerController {
   dispose(): void {
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('blur', this.clearInput);
     document.removeEventListener('mousemove', this.onMouseMove);
+    document.removeEventListener('pointerlockchange', this.onPointerLockChange);
   }
 
   private applyCamera(): void {

@@ -84,12 +84,27 @@ export function generateIsland(seed: number): GeneratedIsland {
     }
   }
 
+  const spawn = {
+    x: 0.5,
+    y: surfaceHeight(seed, 0, 0) + 1.01,
+    z: 0.5,
+  };
+  const minX = Math.floor(spawn.x - GAME_CONFIG.playerRadius);
+  const maxX = Math.floor(spawn.x + GAME_CONFIG.playerRadius);
+  const minY = Math.floor(spawn.y);
+  const maxY = Math.floor(spawn.y + GAME_CONFIG.playerHeight - 0.001);
+  const minZ = Math.floor(spawn.z - GAME_CONFIG.playerRadius);
+  const maxZ = Math.floor(spawn.z + GAME_CONFIG.playerRadius);
+  for (let x = minX; x <= maxX; x += 1) {
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let z = minZ; z <= maxZ; z += 1) {
+        setBlock(blocks, { x, y, z }, BlockId.Air);
+      }
+    }
+  }
+
   return {
     blocks,
-    spawn: {
-      x: 0.5,
-      y: surfaceHeight(seed, 0, 0) + 1.01,
-      z: 0.5,
-    },
+    spawn,
   };
 }

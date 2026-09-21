@@ -1,7 +1,7 @@
 import { GAME_CONFIG } from '../game/config';
 
 import { BLOCKS, BlockId, isBlockId } from './blocks';
-import { blockKey, type Vec3i } from './coords';
+import { blockKey, isEditableBlockPosition, type Vec3i } from './coords';
 
 export type BlockDeltaEntry = [x: number, y: number, z: number, block: BlockId];
 
@@ -32,10 +32,7 @@ export class World implements WorldReader {
   }
 
   setBlock(position: Vec3i, block: BlockId): boolean {
-    if (![position.x, position.y, position.z].every(Number.isInteger)) {
-      return false;
-    }
-    if (position.y <= 0 || position.y >= GAME_CONFIG.worldHeight) {
+    if (!isEditableBlockPosition(position)) {
       return false;
     }
     if (!isBlockId(block) || block === BlockId.Foundation) {

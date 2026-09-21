@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { BlockId } from '../src/world/blocks';
 import type { WorldReader } from '../src/world/World';
-import { playerOverlapsBlock, stepPlayer, type PlayerState } from '../src/player/physics';
+import {
+  hasSafePlayerCollisionBounds,
+  playerOverlapsBlock,
+  stepPlayer,
+  type PlayerState,
+} from '../src/player/physics';
 
 class FlatWorld implements WorldReader {
   constructor(private readonly extraBlocks = new Map<string, BlockId>()) {}
@@ -66,5 +71,16 @@ describe('playerOverlapsBlock', () => {
   it('detects intersections between the player body and a block cube', () => {
     expect(playerOverlapsBlock(resting, { x: 0, y: 1, z: 0 })).toBe(true);
     expect(playerOverlapsBlock(resting, { x: 2, y: 1, z: 0 })).toBe(false);
+  });
+});
+
+describe('hasSafePlayerCollisionBounds', () => {
+  it('allows reachable off-island positions while rejecting unsafe numeric iteration bounds', () => {
+    expect(hasSafePlayerCollisionBounds(resting.position)).toBe(true);
+    expect(hasSafePlayerCollisionBounds({ x: 40, y: -5, z: -40 })).toBe(true);
+    expect(hasSafePlayerCollisionBounds({ x: 0.5, y: 32, z: 0.5 })).toBe(true);
+    expect(hasSafePlayerCollisionBounds({ x: 1e308, y: 8, z: 0 })).toBe(false);
+    expect(hasSafePlayerCollisionBounds({ x: 0, y: 1e308, z: 0 })).toBe(false);
+    expect(hasSafePlayerCollisionBounds({ x: 0, y: 8, z: -1e308 })).toBe(false);
   });
 });

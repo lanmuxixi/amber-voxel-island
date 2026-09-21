@@ -1,4 +1,5 @@
 import { BLOCKS, BlockId } from '../world/blocks';
+import { isEditableBlockPosition } from '../world/coords';
 import type { BlockDeltaEntry } from '../world/World';
 
 export interface SaveDataV1 {
@@ -96,7 +97,11 @@ export function decodeSave(raw: string | null): SaveDataV1 | null {
         return null;
       }
       const [x, y, z, block] = entry;
-      if (!(Number(block) in BLOCKS) || block === BlockId.Foundation) {
+      if (
+        !isEditableBlockPosition({ x: Number(x), y: Number(y), z: Number(z) }) ||
+        !(Number(block) in BLOCKS) ||
+        block === BlockId.Foundation
+      ) {
         return null;
       }
       changes.push([Number(x), Number(y), Number(z), Number(block) as BlockId]);

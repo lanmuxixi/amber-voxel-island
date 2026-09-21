@@ -29,11 +29,29 @@ describe('decodeSave', () => {
       JSON.stringify({ ...validSave, selectedSlot: 9 }),
       JSON.stringify({ ...validSave, changes: [[1, 2, 3, 999]] }),
       JSON.stringify({ ...validSave, changes: [[1, 2, 3, BlockId.Foundation]] }),
+      JSON.stringify({ ...validSave, changes: [[-33, 2, 3, BlockId.Stone]] }),
+      JSON.stringify({ ...validSave, changes: [[32, 2, 3, BlockId.Stone]] }),
+      JSON.stringify({ ...validSave, changes: [[1, 0, 3, BlockId.Stone]] }),
+      JSON.stringify({ ...validSave, changes: [[1, 32, 3, BlockId.Stone]] }),
+      JSON.stringify({ ...validSave, changes: [[1, 2, -33, BlockId.Stone]] }),
+      JSON.stringify({ ...validSave, changes: [[1, 2, 32, BlockId.Stone]] }),
     ];
 
     for (const payload of invalidPayloads) {
       expect(decodeSave(payload)).toBeNull();
     }
+  });
+
+  it('accepts delta coordinates on every finite editable boundary', () => {
+    const boundarySave: SaveDataV1 = {
+      ...validSave,
+      changes: [
+        [-32, 1, -32, BlockId.Air],
+        [31, 31, 31, BlockId.Stone],
+      ],
+    };
+
+    expect(decodeSave(JSON.stringify(boundarySave))).toEqual(boundarySave);
   });
 });
 

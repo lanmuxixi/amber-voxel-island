@@ -8,7 +8,7 @@ describe('HUD visibility and pointer events', () => {
 
   it('keeps hidden overlays out of layout', () => {
     expect(styles).toMatch(
-      /\.onboarding\[hidden\],\s*\.pause-menu\[hidden\],\s*\.notice\[hidden\]\s*\{[^}]*display:\s*none;/,
+      /\.onboarding\[hidden\],\s*\.pause-menu\[hidden\],\s*\.notice\[hidden\],\s*\.persistent-notice\[hidden\],\s*\.controls-help\[hidden\]\s*\{[^}]*display:\s*none;/,
     );
   });
 

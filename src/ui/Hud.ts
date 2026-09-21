@@ -8,9 +8,9 @@ interface HudActions {
 export class Hud {
   private readonly crosshair: HTMLDivElement;
 
-  private readonly hotbar: HTMLDivElement;
+  private readonly hotbar: HTMLOListElement;
 
-  private readonly hotbarSlots: HTMLButtonElement[];
+  private readonly hotbarSlots: HTMLLIElement[];
 
   private readonly onboarding: HTMLDivElement;
 
@@ -22,7 +22,13 @@ export class Hud {
 
   private readonly resetButton: HTMLButtonElement;
 
+  private readonly controlsButton: HTMLButtonElement;
+
+  private readonly controlsHelp: HTMLDivElement;
+
   private readonly noticeElement: HTMLDivElement;
+
+  private readonly persistentNoticeElement: HTMLDivElement;
 
   private readonly dialog: HTMLDialogElement;
 
@@ -34,6 +40,12 @@ export class Hud {
 
   private onboardingDismissed = false;
 
+  private readonly onToggleControls = (): void => {
+    const expanded = this.controlsHelp.hidden;
+    this.controlsHelp.hidden = !expanded;
+    this.controlsButton.setAttribute('aria-expanded', String(expanded));
+  };
+
   constructor(private readonly root: HTMLElement, private readonly actions: HudActions) {
     this.root.replaceChildren();
     this.root.classList.add('hud');
@@ -41,23 +53,25 @@ export class Hud {
     this.crosshair = document.createElement('div');
     this.crosshair.className = 'crosshair';
 
-    this.hotbar = document.createElement('div');
+    this.hotbar = document.createElement('ol');
     this.hotbar.className = 'hotbar';
+    this.hotbar.setAttribute('aria-label', '快捷栏');
     this.hotbarSlots = HOTBAR_BLOCKS.map((block, index) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'hotbar-slot';
-      button.disabled = block === null;
-      button.setAttribute('aria-label', `物品栏槽位 ${index + 1}`);
+      const slot = document.createElement('li');
+      slot.className = block === null ? 'hotbar-slot is-empty' : 'hotbar-slot';
+      slot.setAttribute(
+        'aria-label',
+        `物品栏槽位 ${index + 1}${block === null ? '，空' : `，${BLOCKS[block].label}`}`,
+      );
       const shortcut = document.createElement('span');
       shortcut.className = 'hotbar-shortcut';
       shortcut.textContent = String(index + 1);
       const label = document.createElement('span');
       label.className = 'hotbar-label';
       label.textContent = block === null ? '空' : BLOCKS[block].label;
-      button.append(shortcut, label);
-      this.hotbar.append(button);
-      return button;
+      slot.append(shortcut, label);
+      this.hotbar.append(slot);
+      return slot;
     });
 
     this.onboarding = document.createElement('div');
@@ -80,24 +94,44 @@ export class Hud {
     const pauseTitle = document.createElement('h2');
     pauseTitle.textContent = '暂停';
     const pauseCopy = document.createElement('p');
-    pauseCopy.textContent = '继续探索或重置世界。';
+    pauseCopy.textContent = '继续探索、查看操作说明或重置世界。';
     this.resumeButton = document.createElement('button');
     this.resumeButton.type = 'button';
     this.resumeButton.className = 'primary-button';
     this.resumeButton.textContent = '继续';
     this.resumeButton.setAttribute('aria-label', '继续');
     this.resumeButton.addEventListener('click', this.actions.onResume);
+    this.controlsButton = document.createElement('button');
+    this.controlsButton.type = 'button';
+    this.controlsButton.className = 'secondary-button';
+    this.controlsButton.textContent = '操作说明';
+    this.controlsButton.setAttribute('aria-expanded', 'false');
+    this.controlsButton.setAttribute('aria-controls', 'pause-controls-help');
+    this.controlsButton.addEventListener('click', this.onToggleControls);
+    this.controlsHelp = document.createElement('div');
+    this.controlsHelp.id = 'pause-controls-help';
+    this.controlsHelp.className = 'controls-help';
+    this.controlsHelp.hidden = true;
+    this.controlsHelp.textContent = 'WASD 移动，Space 跳跃，鼠标查看，左键移除，右键放置，滚轮或数字键切换方块。';
     this.resetButton = document.createElement('button');
     this.resetButton.type = 'button';
     this.resetButton.className = 'secondary-button';
     this.resetButton.textContent = '重置世界';
     this.resetButton.setAttribute('aria-label', '重置世界');
     this.resetButton.addEventListener('click', this.actions.onReset);
-    this.pauseMenu.append(pauseTitle, pauseCopy, this.resumeButton, this.resetButton);
+    this.pauseMenu.append(pauseTitle, pauseCopy, this.resumeButton, this.controlsButton, this.controlsHelp, this.resetButton);
 
     this.noticeElement = document.createElement('div');
     this.noticeElement.className = 'notice panel';
     this.noticeElement.hidden = true;
+    this.noticeElement.setAttribute('role', 'status');
+    this.noticeElement.setAttribute('aria-live', 'polite');
+
+    this.persistentNoticeElement = document.createElement('div');
+    this.persistentNoticeElement.className = 'persistent-notice panel';
+    this.persistentNoticeElement.hidden = true;
+    this.persistentNoticeElement.setAttribute('role', 'alert');
+    this.persistentNoticeElement.setAttribute('aria-live', 'assertive');
 
     this.dialog = document.createElement('dialog');
     this.dialog.className = 'reset-dialog panel';
@@ -125,6 +159,7 @@ export class Hud {
       this.hotbar,
       this.onboarding,
       this.pauseMenu,
+      this.persistentNoticeElement,
       this.noticeElement,
       this.dialog,
     );
@@ -133,7 +168,11 @@ export class Hud {
   renderHotbar(selectedIndex: number): void {
     for (const [index, slot] of this.hotbarSlots.entries()) {
       slot.classList.toggle('is-selected', index === selectedIndex);
-      slot.setAttribute('aria-pressed', String(index === selectedIndex));
+      if (index === selectedIndex) {
+        slot.setAttribute('aria-current', 'true');
+      } else {
+        slot.removeAttribute('aria-current');
+      }
     }
   }
 
@@ -149,19 +188,21 @@ export class Hud {
     this.onboarding.hidden = true;
   }
 
-  notice(message: string, persistent = false): void {
+  notice(message: string): void {
     this.noticeElement.textContent = message;
     this.noticeElement.hidden = false;
-    this.noticeElement.classList.toggle('is-persistent', persistent);
     if (this.noticeTimer) {
       clearTimeout(this.noticeTimer);
       this.noticeTimer = null;
     }
-    if (!persistent) {
-      this.noticeTimer = setTimeout(() => {
-        this.noticeElement.hidden = true;
-      }, 2200);
-    }
+    this.noticeTimer = setTimeout(() => {
+      this.noticeElement.hidden = true;
+    }, 2200);
+  }
+
+  persistentNotice(message: string): void {
+    this.persistentNoticeElement.textContent = message;
+    this.persistentNoticeElement.hidden = false;
   }
 
   confirmReset(): Promise<boolean> {
@@ -189,6 +230,7 @@ export class Hud {
   dispose(): void {
     this.enterButton.removeEventListener('click', this.actions.onResume);
     this.resumeButton.removeEventListener('click', this.actions.onResume);
+    this.controlsButton.removeEventListener('click', this.onToggleControls);
     this.resetButton.removeEventListener('click', this.actions.onReset);
     if (this.noticeTimer) {
       clearTimeout(this.noticeTimer);

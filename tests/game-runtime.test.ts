@@ -4,6 +4,14 @@ import type { PlayerState } from '../src/player/physics';
 
 const spies = vi.hoisted(() => ({
   hudNotice: vi.fn(),
+  hudPersistentNotice: vi.fn(),
+  hudSetPaused: vi.fn(),
+  hudDismissOnboarding: vi.fn(),
+  rendererRender: vi.fn(),
+  playerLocked: false,
+  playerState: null as PlayerState | null,
+  hudResetAction: null as (() => void) | null,
+  hudConfirmReset: false,
 }));
 
 vi.mock('three', () => {
@@ -16,7 +24,7 @@ vi.mock('three', () => {
 
     setSize(): void {}
 
-    render(): void {}
+    render = spies.rendererRender;
 
     dispose(): void {}
   }
@@ -82,26 +90,24 @@ vi.mock('../src/interaction/BlockInteraction', () => ({
 
 vi.mock('../src/player/PlayerController', () => ({
   PlayerController: class {
-    private state: PlayerState;
-
     constructor(_canvas: HTMLCanvasElement, _camera: unknown, _world: unknown, initial: PlayerState) {
-      this.state = structuredClone(initial);
+      spies.playerState = structuredClone(initial);
     }
 
     requestLock(): void {}
 
     isLocked(): boolean {
-      return false;
+      return spies.playerLocked;
     }
 
     update(): void {}
 
     getState(): PlayerState {
-      return structuredClone(this.state);
+      return structuredClone(spies.playerState!);
     }
 
     setState(state: PlayerState): void {
-      this.state = structuredClone(state);
+      spies.playerState = structuredClone(state);
     }
 
     replaceWorld(): void {}
@@ -112,16 +118,22 @@ vi.mock('../src/player/PlayerController', () => ({
 
 vi.mock('../src/ui/Hud', () => ({
   Hud: class {
+    constructor(_root: HTMLElement, actions: { onReset(): void }) {
+      spies.hudResetAction = actions.onReset;
+    }
+
     notice = spies.hudNotice;
+
+    persistentNotice = spies.hudPersistentNotice;
 
     renderHotbar(): void {}
 
-    setPaused(): void {}
+    setPaused = spies.hudSetPaused;
 
-    dismissOnboarding(): void {}
+    dismissOnboarding = spies.hudDismissOnboarding;
 
     async confirmReset(): Promise<boolean> {
-      return false;
+      return spies.hudConfirmReset;
     }
 
     dispose(): void {}
@@ -157,9 +169,9 @@ import { Game } from '../src/game/Game';
 
 type StoragePort = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
-function createStorage(): StoragePort & { setItem: ReturnType<typeof vi.fn> } {
+function createStorage(raw: string | null = null): StoragePort & { setItem: ReturnType<typeof vi.fn> } {
   return {
-    getItem: vi.fn(() => null),
+    getItem: vi.fn(() => raw),
     setItem: vi.fn(),
     removeItem: vi.fn(),
   };
@@ -168,8 +180,12 @@ function createStorage(): StoragePort & { setItem: ReturnType<typeof vi.fn> } {
 function installBrowser(getStorage: () => StoragePort): {
   requestFrame: ReturnType<typeof vi.fn>;
   cancelFrame: ReturnType<typeof vi.fn>;
+  browserDocument: Document;
+  browserWindow: Window;
+  addWindowListener: ReturnType<typeof vi.spyOn>;
 } {
   const browserWindow = new EventTarget() as Window;
+  const addWindowListener = vi.spyOn(browserWindow, 'addEventListener');
   Object.assign(browserWindow, { innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1 });
   Object.defineProperty(browserWindow, 'localStorage', { configurable: true, get: getStorage });
 
@@ -193,7 +209,7 @@ function installBrowser(getStorage: () => StoragePort): {
   vi.stubGlobal('cancelAnimationFrame', cancelFrame);
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, get: getStorage });
 
-  return { requestFrame, cancelFrame };
+  return { requestFrame, cancelFrame, browserDocument, browserWindow, addWindowListener };
 }
 
 function createGame(): Game {
@@ -205,6 +221,14 @@ function createGame(): Game {
 
 beforeEach(() => {
   spies.hudNotice.mockClear();
+  spies.hudPersistentNotice.mockClear();
+  spies.hudSetPaused.mockClear();
+  spies.hudDismissOnboarding.mockClear();
+  spies.rendererRender.mockClear();
+  spies.playerLocked = false;
+  spies.playerState = null;
+  spies.hudResetAction = null;
+  spies.hudConfirmReset = false;
 });
 
 afterEach(() => {
@@ -220,10 +244,7 @@ describe('Game runtime boundaries', () => {
     });
 
     expect(() => createGame()).not.toThrow();
-    expect(spies.hudNotice).toHaveBeenCalledWith(
-      '浏览器存储不可用，本次进度可能无法保留。',
-      true,
-    );
+    expect(spies.hudPersistentNotice).toHaveBeenCalledWith('浏览器存储不可用，本次进度可能无法保留。');
   });
 
   it('immediately persists the generated initial snapshot when no valid save exists', () => {
@@ -242,6 +263,28 @@ describe('Game runtime boundaries', () => {
     });
   });
 
+  it('restores reachable off-island coordinates but falls back from unsafe numeric bounds', () => {
+    const save = (x: number) => JSON.stringify({
+      version: 1,
+      seed: 777,
+      player: { x, y: 8, z: -40, yaw: 0.5, pitch: -0.2 },
+      selectedSlot: 0,
+      changes: [],
+    });
+    const reachableStorage = createStorage(save(40));
+    installBrowser(() => reachableStorage);
+    const reachableGame = createGame();
+    expect(spies.playerState?.position).toEqual({ x: 40, y: 8, z: -40 });
+    reachableGame.dispose();
+
+    vi.unstubAllGlobals();
+    const unsafeStorage = createStorage(save(1e308));
+    installBrowser(() => unsafeStorage);
+    const unsafeGame = createGame();
+    expect(spies.playerState?.position).toEqual({ x: 0.5, y: 6.25, z: -0.5 });
+    unsafeGame.dispose();
+  });
+
   it('starts only one animation loop', () => {
     const storage = createStorage();
     const { requestFrame } = installBrowser(() => storage);
@@ -251,6 +294,15 @@ describe('Game runtime boundaries', () => {
     game.start();
 
     expect(requestFrame).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not register beforeunload and preserves browser BFCache eligibility', () => {
+    const storage = createStorage();
+    const { addWindowListener } = installBrowser(() => storage);
+
+    createGame();
+
+    expect(addWindowListener).not.toHaveBeenCalledWith('beforeunload', expect.any(Function));
   });
 
   it('does not schedule another frame when a queued callback runs after disposal', () => {
@@ -266,5 +318,80 @@ describe('Game runtime boundaries', () => {
 
     expect(cancelFrame).toHaveBeenCalledTimes(1);
     expect(requestFrame).toHaveBeenCalledTimes(1);
+  });
+
+  it('queues the latest player snapshot before flushing on visibility loss', () => {
+    const storage = createStorage();
+    const { browserDocument } = installBrowser(() => storage);
+    createGame();
+    spies.playerState!.position = { x: 9.25, y: 12.5, z: -4.75 };
+    Object.defineProperty(browserDocument, 'hidden', { configurable: true, value: true });
+
+    browserDocument.dispatchEvent(new Event('visibilitychange'));
+
+    const lastWrite = storage.setItem.mock.calls.at(-1);
+    expect(JSON.parse(lastWrite?.[1] as string).player).toMatchObject({ x: 9.25, y: 12.5, z: -4.75 });
+  });
+
+  it('dismisses onboarding on first pointer lock so immediate Escape opens pause', () => {
+    const storage = createStorage();
+    const { browserDocument } = installBrowser(() => storage);
+    createGame();
+    spies.hudSetPaused.mockClear();
+
+    spies.playerLocked = true;
+    browserDocument.dispatchEvent(new Event('pointerlockchange'));
+    spies.playerLocked = false;
+    browserDocument.dispatchEvent(new Event('pointerlockchange'));
+
+    expect(spies.hudDismissOnboarding).toHaveBeenCalledTimes(1);
+    expect(spies.hudSetPaused).toHaveBeenLastCalledWith(true, false);
+  });
+
+  it('renders one paused frame without scheduling static shadow work forever', () => {
+    const storage = createStorage();
+    const { requestFrame } = installBrowser(() => storage);
+    const game = createGame();
+    game.start();
+    const pausedFrame = requestFrame.mock.calls[0]?.[0] as FrameRequestCallback;
+
+    pausedFrame(performance.now() + 16);
+
+    expect(spies.rendererRender).toHaveBeenCalledTimes(1);
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+  });
+
+  it('requests exactly one fresh frame when a paused viewport changes', () => {
+    const storage = createStorage();
+    const { requestFrame, browserWindow } = installBrowser(() => storage);
+    const game = createGame();
+    game.start();
+    const initialFrame = requestFrame.mock.calls[0]?.[0] as FrameRequestCallback;
+    initialFrame(performance.now() + 16);
+
+    browserWindow.dispatchEvent(new Event('resize'));
+    const resizeFrame = requestFrame.mock.calls[1]?.[0] as FrameRequestCallback;
+    resizeFrame(performance.now() + 32);
+
+    expect(spies.rendererRender).toHaveBeenCalledTimes(2);
+    expect(requestFrame).toHaveBeenCalledTimes(2);
+  });
+
+  it('requests exactly one fresh frame after a paused world reset', async () => {
+    const storage = createStorage();
+    const { requestFrame } = installBrowser(() => storage);
+    const game = createGame();
+    game.start();
+    const initialFrame = requestFrame.mock.calls[0]?.[0] as FrameRequestCallback;
+    initialFrame(performance.now() + 16);
+    spies.hudConfirmReset = true;
+
+    spies.hudResetAction?.();
+    await vi.waitFor(() => expect(requestFrame).toHaveBeenCalledTimes(2));
+    const resetFrame = requestFrame.mock.calls[1]?.[0] as FrameRequestCallback;
+    resetFrame(performance.now() + 32);
+
+    expect(spies.rendererRender).toHaveBeenCalledTimes(2);
+    expect(requestFrame).toHaveBeenCalledTimes(2);
   });
 });

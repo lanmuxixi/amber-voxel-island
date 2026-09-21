@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { BlockInteraction } from '../interaction/BlockInteraction';
 import { Inventory } from '../inventory/Inventory';
 import { PlayerController } from '../player/PlayerController';
-import { playerOverlapsBlock, type PlayerState } from '../player/physics';
+import { hasSafePlayerCollisionBounds, playerOverlapsBlock, type PlayerState } from '../player/physics';
 import { resolveStorage, SaveStore, type SaveDataV1 } from '../persistence/SaveStore';
 import { Hud } from '../ui/Hud';
 import { BLOCKS, BlockId } from '../world/blocks';
@@ -24,6 +24,10 @@ declare global {
         paused: boolean;
         target: { x: number; y: number; z: number } | null;
       };
+      editBlock(position: { x: number; y: number; z: number }, block: BlockId): boolean;
+      getBlock(position: { x: number; y: number; z: number }): BlockId;
+      teleport(position: { x: number; y: number; z: number }, yaw?: number): void;
+      flushSave(): void;
     };
   }
 }
@@ -51,20 +55,25 @@ export class Game {
     this.camera.aspect = width / Math.max(1, height);
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
+    if (this.started) {
+      this.start();
+    }
   };
 
   private readonly onPointerLockChange = (): void => {
-    this.hud.setPaused(!this.player.isLocked(), this.firstVisit);
+    const locked = this.player.isLocked();
+    if (locked && this.firstVisit) {
+      this.firstVisit = false;
+      this.hud.dismissOnboarding();
+    }
+    this.hud.setPaused(!locked, this.firstVisit);
+    this.start();
   };
 
   private readonly onVisibilityChange = (): void => {
     if (document.hidden) {
-      this.saveStore.flush();
+      this.flushSave();
     }
-  };
-
-  private readonly onBeforeUnload = (): void => {
-    this.saveStore.flush();
   };
 
   private readonly onWheel = (event: WheelEvent): void => {
@@ -95,8 +104,6 @@ export class Game {
 
   private readonly seed: number;
 
-  private readonly initialSpawn: PlayerState;
-
   private frameHandle: number | null = null;
 
   private previousFrameTime = 0;
@@ -106,6 +113,8 @@ export class Game {
   private firstVisit: boolean;
 
   private disposed = false;
+
+  private started = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -119,7 +128,7 @@ export class Game {
     });
     const storageResolution = resolveStorage(() => window.localStorage);
     this.saveStore = new SaveStore(storageResolution.storage, 'amber-voxel-island:v1', 250, () => {
-      this.hud.notice('浏览器存储不可用，本次进度可能无法保留。', true);
+      this.hud.persistentNotice('浏览器存储不可用，本次进度可能无法保留。');
     });
 
     const stored = this.saveStore.load();
@@ -163,8 +172,8 @@ export class Game {
     this.inventory.select(loadResult.data?.selectedSlot ?? 0);
 
     const restoredState = loadResult.data ? this.restoreSavedPlayer(loadResult.data) : null;
-    this.initialSpawn = restoredState ?? this.spawnState();
-    this.player = new PlayerController(this.canvas, this.camera, this.world, this.initialSpawn);
+    const initialState = restoredState ?? this.spawnState();
+    this.player = new PlayerController(this.canvas, this.camera, this.world, initialState);
 
     this.interaction = new BlockInteraction(this.camera, this.scene, this.canvas, {
       remove: (position) => {
@@ -203,7 +212,6 @@ export class Game {
     window.addEventListener('resize', this.onResize);
     window.addEventListener('wheel', this.onWheel, { passive: true });
     window.addEventListener('keydown', this.onKeyDown);
-    window.addEventListener('beforeunload', this.onBeforeUnload);
     document.addEventListener('pointerlockchange', this.onPointerLockChange);
     document.addEventListener('visibilitychange', this.onVisibilityChange);
 
@@ -211,7 +219,7 @@ export class Game {
       this.hud.notice('旧存档无法读取，已创建新岛屿。');
     }
     if (loadResult.issue === 'unavailable') {
-      this.hud.notice('浏览器存储不可用，本次进度可能无法保留。', true);
+      this.hud.persistentNotice('浏览器存储不可用，本次进度可能无法保留。');
     }
 
     if (new URLSearchParams(location.search).get('e2e') === '1') {
@@ -228,6 +236,29 @@ export class Game {
             target: this.interaction.getTarget(),
           };
         },
+        editBlock: (position, block) => {
+          if (!this.world.setBlock(position, block)) {
+            return false;
+          }
+          this.chunks.markBlockDirty(position);
+          this.queueSave();
+          this.start();
+          return true;
+        },
+        getBlock: (position) => this.world.getBlock(position),
+        teleport: (position, yaw = 0) => {
+          const current = this.player.getState();
+          this.player.setState({
+            ...current,
+            position: { ...position },
+            velocity: { x: 0, y: 0, z: 0 },
+            yaw,
+            grounded: false,
+          });
+          this.queueSave();
+          this.start();
+        },
+        flushSave: () => this.flushSave(),
       };
     }
 
@@ -238,11 +269,17 @@ export class Game {
   }
 
   start(): void {
+    this.started = true;
     if (this.disposed || this.frameHandle !== null) {
       return;
     }
     this.previousFrameTime = performance.now();
     this.frameHandle = requestAnimationFrame(this.onFrame);
+  }
+
+  flushSave(): void {
+    this.queueSave();
+    this.saveStore.flush();
   }
 
   dispose(): void {
@@ -254,11 +291,10 @@ export class Game {
       cancelAnimationFrame(this.frameHandle);
       this.frameHandle = null;
     }
-    this.saveStore.flush();
+    this.flushSave();
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('wheel', this.onWheel);
     window.removeEventListener('keydown', this.onKeyDown);
-    window.removeEventListener('beforeunload', this.onBeforeUnload);
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
     this.interaction.dispose();
@@ -271,6 +307,7 @@ export class Game {
   }
 
   private readonly onFrame = (time: number): void => {
+    this.frameHandle = null;
     if (this.disposed) {
       return;
     }
@@ -281,14 +318,6 @@ export class Game {
     if (this.player.isLocked()) {
       this.player.update(dt);
       const current = this.player.getState();
-      const displacement = Math.hypot(
-        current.position.x - this.initialSpawn.position.x,
-        current.position.z - this.initialSpawn.position.z,
-      );
-      if (this.firstVisit && displacement > 0.03) {
-        this.firstVisit = false;
-        this.hud.dismissOnboarding();
-      }
       if (current.position.y < -10) {
         this.player.setState(this.spawnState());
       }
@@ -303,7 +332,7 @@ export class Game {
     this.chunks.rebuildPending();
     this.effects.update(dt);
     this.renderer.render(this.scene, this.camera);
-    if (!this.disposed) {
+    if (!this.disposed && this.player.isLocked()) {
       this.frameHandle = requestAnimationFrame(this.onFrame);
     }
   };
@@ -327,7 +356,7 @@ export class Game {
       pitch: save.player.pitch,
       grounded: false,
     };
-    if (![state.position.x, state.position.y, state.position.z, state.yaw, state.pitch].every(Number.isFinite)) {
+    if (!hasSafePlayerCollisionBounds(state.position) || ![state.yaw, state.pitch].every(Number.isFinite)) {
       return null;
     }
 
@@ -383,5 +412,6 @@ export class Game {
     this.saveStore.schedule(this.createSave());
     this.saveStore.flush();
     this.hud.renderHotbar(this.inventory.selectedIndex);
+    this.start();
   }
 }

@@ -102,6 +102,9 @@ body::before {
   grid-template-columns: repeat(9, minmax(0, 72px));
   gap: 10px;
   transform: translateX(-50%);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .hotbar-slot,
@@ -161,7 +164,7 @@ body::before {
   }
 }
 
-.hotbar-slot:disabled {
+.hotbar-slot.is-empty {
   opacity: 0.45;
 }
 
@@ -182,13 +185,16 @@ body::before {
 
 .onboarding,
 .pause-menu,
-.notice {
+.notice,
+.persistent-notice {
   position: absolute;
 }
 
 .onboarding[hidden],
 .pause-menu[hidden],
-.notice[hidden] {
+.notice[hidden],
+.persistent-notice[hidden],
+.controls-help[hidden] {
   display: none;
 }
 
@@ -202,10 +208,26 @@ body::before {
 }
 
 .notice {
-  top: 24px;
+  top: 82px;
   left: 50%;
   transform: translateX(-50%);
   padding: 14px 18px;
+}
+
+.persistent-notice {
+  top: 24px;
+  left: 50%;
+  width: min(560px, calc(100vw - 48px));
+  transform: translateX(-50%);
+  padding: 14px 18px;
+  border-color: rgba(255, 186, 112, 0.65);
+}
+
+.controls-help {
+  padding: 12px 14px;
+  border-left: 2px solid rgba(255, 227, 163, 0.58);
+  color: rgba(254, 243, 209, 0.82);
+  line-height: 1.5;
 }
 
 .onboarding h1,

@@ -7,7 +7,7 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
-    "types": ["vite/client", "vitest/globals", "node"]
+    "types": ["vite/client", "vitest/globals", "node", "@webgpu/types"]
   },
   "include": ["src", "tests", "vite.config.ts", "playwright.config.ts"]
 }

@@ -41,6 +41,13 @@ function getPlayerBounds(position: Vec3): {
   };
 }
 
+export function hasSafePlayerCollisionBounds(position: Vec3): boolean {
+  if (![position.x, position.y, position.z].every(Number.isFinite)) {
+    return false;
+  }
+  return Object.values(getPlayerBounds(position)).every(Number.isSafeInteger);
+}
+
 function overlapsWorld(world: WorldReader, position: Vec3): boolean {
   const bounds = getPlayerBounds(position);
   for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
