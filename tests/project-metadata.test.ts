@@ -20,4 +20,10 @@ describe('project runtime metadata', () => {
     expect(packageJson.dependencies.three).toMatch(/^\^0\.180\./);
     expect(packageJson.devDependencies['@types/three']).toMatch(/^\^0\.180\./);
   });
+
+  it('builds assets for the GitHub Pages project path', () => {
+    const viteConfig = readFileSync(resolve(process.cwd(), 'vite.config.ts'), 'utf8');
+
+    expect(viteConfig).toContain("base: '/amber-voxel-island/'");
+  });
 });
