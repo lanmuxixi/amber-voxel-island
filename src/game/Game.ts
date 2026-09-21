@@ -1,3 +1,4 @@
+import { BlockEffects } from '../effects/BlockEffects';
 import * as THREE from 'three';
 
 import { BlockInteraction } from '../interaction/BlockInteraction';
@@ -41,6 +42,8 @@ export class Game {
   private readonly inventory: Inventory;
 
   private readonly interaction: BlockInteraction;
+
+  private readonly effects: BlockEffects;
 
   private readonly onResize = (): void => {
     const width = this.canvas.clientWidth || window.innerWidth;
@@ -136,12 +139,21 @@ export class Game {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog('#8a6f82', 26, 78);
     this.camera = new THREE.PerspectiveCamera(75, 1, 0.05, 120);
+    this.effects = new BlockEffects(this.scene);
 
     this.chunks = new ChunkRenderer(this.scene, this.world);
     this.chunks.buildAll();
 
-    const light = new THREE.HemisphereLight('#ffffff', '#777777', 1.2);
-    this.scene.add(light);
+    const ambient = new THREE.HemisphereLight('#c6b3d5', '#694735', 1.35);
+    const sun = new THREE.DirectionalLight('#ffd59c', 2.4);
+    sun.position.set(-28, 42, -18);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = -42;
+    sun.shadow.camera.right = 42;
+    sun.shadow.camera.top = 42;
+    sun.shadow.camera.bottom = -42;
+    this.scene.add(ambient, sun);
 
     this.inventory = new Inventory(0);
     this.inventory.select(loadResult.data?.selectedSlot ?? 0);
@@ -159,6 +171,7 @@ export class Game {
         if (!this.world.setBlock(position, BlockId.Air)) {
           return;
         }
+        this.effects.remove(position, block);
         this.chunks.markBlockDirty(position);
         this.queueSave();
       },
@@ -173,6 +186,7 @@ export class Game {
         if (!this.world.setBlock(position, this.inventory.selectedBlock)) {
           return;
         }
+        this.effects.place(position, this.inventory.selectedBlock);
         this.chunks.markBlockDirty(position);
         this.queueSave();
       },
@@ -238,6 +252,7 @@ export class Game {
     this.interaction.dispose();
     this.player.dispose();
     this.chunks.dispose();
+    this.effects.dispose();
     this.renderer.dispose();
     this.hud.dispose();
     delete window.__VOXEL_TEST__;
@@ -270,6 +285,7 @@ export class Game {
 
     this.interaction.update(this.chunks.getMeshes());
     this.chunks.rebuildPending();
+    this.effects.update(dt);
     this.renderer.render(this.scene, this.camera);
     this.frameHandle = requestAnimationFrame(this.onFrame);
   };

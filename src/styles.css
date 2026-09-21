@@ -16,8 +16,21 @@ body {
 }
 
 body {
+  position: relative;
   min-height: 100vh;
   overflow: hidden;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: auto 50% 12vh 50%;
+  width: min(72vw, 920px);
+  height: min(32vh, 340px);
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 194, 118, 0.22) 0%, rgba(255, 194, 118, 0.08) 38%, transparent 74%);
+  pointer-events: none;
 }
 
 #game-canvas {
@@ -31,6 +44,10 @@ body {
   inset: 0;
   pointer-events: none;
   padding: 24px;
+}
+
+.hud {
+  animation: fade-in 360ms ease both;
 }
 
 .panel {
@@ -106,6 +123,37 @@ body {
   flex-direction: column;
   justify-content: space-between;
   align-items: flex-start;
+  animation: rise-in 320ms ease both;
+}
+
+.hotbar-slot:nth-child(1) { animation-delay: 40ms; }
+.hotbar-slot:nth-child(2) { animation-delay: 70ms; }
+.hotbar-slot:nth-child(3) { animation-delay: 100ms; }
+.hotbar-slot:nth-child(4) { animation-delay: 130ms; }
+.hotbar-slot:nth-child(5) { animation-delay: 160ms; }
+.hotbar-slot:nth-child(6) { animation-delay: 190ms; }
+.hotbar-slot:nth-child(7) { animation-delay: 220ms; }
+.hotbar-slot:nth-child(8) { animation-delay: 250ms; }
+.hotbar-slot:nth-child(9) { animation-delay: 280ms; }
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .hotbar-slot:disabled {
@@ -215,5 +263,12 @@ button:focus-visible {
   .hotbar {
     grid-template-columns: repeat(9, minmax(0, 1fr));
     width: calc(100vw - 24px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud,
+  .hotbar-slot {
+    animation: none !important;
   }
 }
