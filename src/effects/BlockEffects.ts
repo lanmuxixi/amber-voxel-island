@@ -88,6 +88,8 @@ export class BlockEffects {
   private readonly placeMaterial = new THREE.MeshBasicMaterial({
     transparent: true,
     opacity: 0.45,
+    depthTest: false,
+    depthWrite: false,
   });
 
   private readonly placeAnimations: PlaceAnimation[] = [];
@@ -127,6 +129,7 @@ export class BlockEffects {
     }
     if (!animation) {
       const mesh = new THREE.Mesh(this.placeGeometry, this.placeMaterial.clone());
+      mesh.renderOrder = 1;
       animation = { mesh, age: 0, duration: 0.12 };
       this.placeAnimations.push(animation);
     }

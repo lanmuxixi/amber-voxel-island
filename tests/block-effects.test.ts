@@ -78,6 +78,21 @@ describe('BlockEffects', () => {
     effects.dispose();
   });
 
+  it('renders place animations above the opaque placed block', () => {
+    const scene = new THREE.Scene();
+    const effects = new BlockEffects(scene);
+
+    effects.place({ x: 1, y: 2, z: 3 }, BlockId.Grass);
+    const placedMesh = scene.children.find(isRegularMesh);
+    const material = placedMesh?.material as THREE.MeshBasicMaterial | undefined;
+
+    expect(material?.depthTest).toBe(false);
+    expect(material?.depthWrite).toBe(false);
+    expect(placedMesh?.renderOrder).toBeGreaterThan(0);
+
+    effects.dispose();
+  });
+
   it('keeps four visible place animations when reusing the oldest active entry', () => {
     const scene = new THREE.Scene();
     const effects = new BlockEffects(scene);
