@@ -1,21 +1,13 @@
 import './styles.css';
+import { Game } from './game/Game';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas');
-const hud = document.querySelector<HTMLDivElement>('#hud-root');
+const hudRoot = document.querySelector<HTMLElement>('#hud-root');
 
-if (!canvas) {
-  throw new Error('Missing #game-canvas element');
+if (!canvas || !hudRoot) {
+  throw new Error('Game shell is missing required DOM elements.');
 }
 
-if (!hud) {
-  throw new Error('Missing #hud-root element');
-}
-
-hud.innerHTML = `
-  <div class="boot-card">
-    <h1>琥珀群岛</h1>
-    <p>正在生成琥珀群岛...</p>
-  </div>
-`;
-
-canvas.setAttribute('aria-label', 'Voxel island viewport');
+const game = new Game(canvas, hudRoot);
+game.start();
+window.addEventListener('pagehide', () => game.dispose(), { once: true });

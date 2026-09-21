@@ -10,6 +10,8 @@ export class PlayerController {
 
   private readonly keys = new Set<string>();
 
+  private world: WorldReader;
+
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     this.keys.add(event.code);
   };
@@ -30,9 +32,10 @@ export class PlayerController {
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly camera: THREE.PerspectiveCamera,
-    private readonly world: WorldReader,
+    world: WorldReader,
     initial: PlayerState,
   ) {
+    this.world = world;
     this.state = {
       position: { ...initial.position },
       velocity: { ...initial.velocity },
@@ -55,6 +58,10 @@ export class PlayerController {
     };
     this.state = stepPlayer(this.world, this.state, input, deltaSeconds);
     this.applyCamera();
+  }
+
+  replaceWorld(world: WorldReader): void {
+    this.world = world;
   }
 
   getState(): PlayerState {
