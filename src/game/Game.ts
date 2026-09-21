@@ -5,7 +5,7 @@ import { BlockInteraction } from '../interaction/BlockInteraction';
 import { Inventory } from '../inventory/Inventory';
 import { PlayerController } from '../player/PlayerController';
 import { playerOverlapsBlock, type PlayerState } from '../player/physics';
-import { SaveStore, type SaveDataV1 } from '../persistence/SaveStore';
+import { resolveStorage, SaveStore, type SaveDataV1 } from '../persistence/SaveStore';
 import { Hud } from '../ui/Hud';
 import { BLOCKS, BlockId } from '../world/blocks';
 import { ChunkRenderer } from '../world/ChunkRenderer';
@@ -117,11 +117,15 @@ export class Game {
         void this.resetWorld();
       },
     });
-    this.saveStore = new SaveStore(localStorage, 'amber-voxel-island:v1', 250, () => {
+    const storageResolution = resolveStorage(() => window.localStorage);
+    this.saveStore = new SaveStore(storageResolution.storage, 'amber-voxel-island:v1', 250, () => {
       this.hud.notice('浏览器存储不可用，本次进度可能无法保留。', true);
     });
 
-    const loadResult = this.saveStore.load();
+    const stored = this.saveStore.load();
+    const loadResult = storageResolution.unavailable
+      ? { data: stored.data, issue: 'unavailable' as const }
+      : stored;
     this.seed = loadResult.data?.seed ?? crypto.getRandomValues(new Uint32Array(1))[0]!;
     const island = generateIsland(this.seed);
     this.world = new World(island.blocks);
@@ -226,9 +230,17 @@ export class Game {
         },
       };
     }
+
+    if (loadResult.data === null) {
+      this.queueSave();
+      this.saveStore.flush();
+    }
   }
 
   start(): void {
+    if (this.disposed || this.frameHandle !== null) {
+      return;
+    }
     this.previousFrameTime = performance.now();
     this.frameHandle = requestAnimationFrame(this.onFrame);
   }
@@ -259,6 +271,10 @@ export class Game {
   }
 
   private readonly onFrame = (time: number): void => {
+    if (this.disposed) {
+      return;
+    }
+
     const dt = Math.min((time - this.previousFrameTime) / 1000, 0.05);
     this.previousFrameTime = time;
 
@@ -287,7 +303,9 @@ export class Game {
     this.chunks.rebuildPending();
     this.effects.update(dt);
     this.renderer.render(this.scene, this.camera);
-    this.frameHandle = requestAnimationFrame(this.onFrame);
+    if (!this.disposed) {
+      this.frameHandle = requestAnimationFrame(this.onFrame);
+    }
   };
 
   private spawnState(): PlayerState {

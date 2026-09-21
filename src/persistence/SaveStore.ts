@@ -11,6 +11,11 @@ export interface SaveDataV1 {
 
 type StoragePort = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
+export interface StorageResolution {
+  storage: StoragePort;
+  unavailable: boolean;
+}
+
 export interface SaveLoadResult {
   data: SaveDataV1 | null;
   issue: 'invalid' | 'unavailable' | null;
@@ -34,6 +39,26 @@ function normalizeSave(snapshot: SaveDataV1): SaveDataV1 {
     selectedSlot: snapshot.selectedSlot,
     changes: snapshot.changes.map(([x, y, z, block]) => [x, y, z, block]),
   };
+}
+
+export function resolveStorage(getStorage: () => StoragePort): StorageResolution {
+  try {
+    return { storage: getStorage(), unavailable: false };
+  } catch {
+    const values = new Map<string, string>();
+    return {
+      storage: {
+        getItem: (key) => values.get(key) ?? null,
+        setItem: (key, value) => {
+          values.set(key, value);
+        },
+        removeItem: (key) => {
+          values.delete(key);
+        },
+      },
+      unavailable: true,
+    };
+  }
 }
 
 export function decodeSave(raw: string | null): SaveDataV1 | null {
